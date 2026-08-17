@@ -1,15 +1,14 @@
 const Post = require("../models/Post");
+const User = require("../models/User");
 const { generateAltTextFromUrl } = require("./aiController");
 
-// @route  POST /api/posts  (protected, expects multipart/form-data with "image" field)
+// @route  POST /api/posts
 exports.createPost = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "Image is required" });
     }
 
-    // Create the post immediately with empty altText — don't make the user
-    // wait for the AI call. This is the "fire and forget" pattern.
     const newPost = await Post.create({
       caption: req.body.caption || "",
       imageUrl: req.file.path,
@@ -17,14 +16,11 @@ exports.createPost = async (req, res) => {
       author: req.userId,
     });
 
-    const populatedPost = await newPost.populate("author", "username avatar");
+    const populatedPost = await Post.findById(newPost._id).populate("author", "username avatar");
 
-    // Respond to the client RIGHT NOW — don't make them wait for AI.
     res.status(201).json(populatedPost);
 
-    // AFTER responding, generate alt text in the background.
-    // Note: no `await` here on the outer call — this runs after the response
-    // has already been sent, so it doesn't add any delay for the user.
+    // Background process for alt-text generation
     generateAltTextFromUrl(req.file.path)
       .then(async (altText) => {
         if (altText) {
@@ -38,17 +34,18 @@ exports.createPost = async (req, res) => {
   }
 };
 
-// @route  GET /api/posts  (protected — returns feed: your posts + people you follow)
+// @route  GET /api/posts
 exports.getFeed = async (req, res) => {
   try {
-    const User = require("../models/User");
     const currentUser = await User.findById(req.userId);
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    // Show posts from people you follow, PLUS your own posts
-    const authorsToShow = [...currentUser.following, req.userId];
+    const authorsToShow = [...(currentUser.following || []), req.userId];
 
     const posts = await Post.find({ author: { $in: authorsToShow } })
-      .sort({ createdAt: -1 }) // newest first
+      .sort({ createdAt: -1 })
       .populate("author", "username avatar")
       .populate("comments.user", "username avatar");
 
@@ -59,7 +56,7 @@ exports.getFeed = async (req, res) => {
   }
 };
 
-// @route  PUT /api/posts/:id/like  (protected — toggle like)
+// @route  PUT /api/posts/:id/like
 exports.toggleLike = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -70,12 +67,10 @@ exports.toggleLike = async (req, res) => {
     );
 
     if (alreadyLiked) {
-      // unlike: remove userId from likes array
       post.likes = post.likes.filter(
         (userId) => userId.toString() !== req.userId
       );
     } else {
-      // like: add userId to likes array
       post.likes.push(req.userId);
     }
 
@@ -87,7 +82,7 @@ exports.toggleLike = async (req, res) => {
   }
 };
 
-// @route  POST /api/posts/:id/comment  (protected)
+// @route  POST /api/posts/:id/comment
 exports.addComment = async (req, res) => {
   try {
     const { text } = req.body;
@@ -99,7 +94,7 @@ exports.addComment = async (req, res) => {
     post.comments.push({ user: req.userId, text });
     await post.save();
 
-    const updatedPost = await post.populate("comments.user", "username avatar");
+    const updatedPost = await Post.findById(post._id).populate("comments.user", "username avatar");
     res.status(201).json(updatedPost.comments);
   } catch (error) {
     console.error("Add comment error:", error.message);
@@ -107,7 +102,7 @@ exports.addComment = async (req, res) => {
   }
 };
 
-// @route  DELETE /api/posts/:id  (protected — only author can delete)
+// @route  DELETE /api/posts/:id
 exports.deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);

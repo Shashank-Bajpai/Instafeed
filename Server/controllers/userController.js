@@ -1,7 +1,6 @@
 const User = require("../models/User");
 
-// @route  PUT /api/users/:id/follow  (protected)
-// :id = the user you want to follow/unfollow
+// @route  PUT /api/users/:id/follow
 exports.toggleFollow = async (req, res) => {
   try {
     const targetId = req.params.id;
@@ -23,7 +22,6 @@ exports.toggleFollow = async (req, res) => {
     );
 
     if (isFollowing) {
-      // Unfollow: remove each other's IDs
       targetUser.followers = targetUser.followers.filter(
         (id) => id.toString() !== myId
       );
@@ -31,7 +29,6 @@ exports.toggleFollow = async (req, res) => {
         (id) => id.toString() !== targetId
       );
     } else {
-      // Follow: add each other's IDs
       targetUser.followers.push(myId);
       currentUser.following.push(targetId);
     }
@@ -49,11 +46,11 @@ exports.toggleFollow = async (req, res) => {
   }
 };
 
-// @route  GET /api/users/:id  (protected — profile page data)
+// @route  GET /api/users/:id
 exports.getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .select("-password") // never send the hashed password to frontend
+      .select("-password")
       .populate("followers", "username avatar")
       .populate("following", "username avatar");
 
@@ -66,13 +63,12 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// @route  GET /api/users/search?q=someName  (protected)
+// @route  GET /api/users/search
 exports.searchUsers = async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.status(200).json([]);
 
-    // case-insensitive partial match on username
     const users = await User.find({
       username: { $regex: q, $options: "i" },
     }).select("username avatar");
