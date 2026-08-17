@@ -1,13 +1,12 @@
 import axios from "axios";
 
-// This is a pre-configured "waiter" — every API call goes through here
-// so we don't repeat http://localhost:5000 everywhere in the app.
+// Automatically uses VITE_API_URL in production (Vercel)
+// and falls back to localhost during local development
 const api = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
 });
 
-// Before EVERY request, automatically attach the wristband (JWT token)
-// if we have one saved — so protected routes work without extra code.
+// Automatically attaches JWT token to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
